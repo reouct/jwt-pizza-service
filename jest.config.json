@@ -1,0 +1,10 @@
+{
+  "testEnvironment": "node",
+  "collectCoverage": true,
+  "coverageDirectory": "coverage",
+  "coverageReporters": ["text", "lcov", "html"],
+  "setupFilesAfterEnv": ["<rootDir>/test/setup.js"],
+  "testMatch": ["<rootDir>/test/**/*.test.js"],
+  "forceExit": true,
+  "detectOpenHandles": true
+}
