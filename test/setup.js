@@ -1,6 +1,3 @@
-// Jest setup file to mock database connections
-const mysql = require("mysql2/promise");
-
 // Mock mysql2 to prevent actual database connections during tests
 jest.mock("mysql2/promise", () => ({
   createConnection: jest.fn(() => ({
