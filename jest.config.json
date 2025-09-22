@@ -2,7 +2,7 @@
   "testEnvironment": "node",
   "collectCoverage": true,
   "coverageDirectory": "coverage",
-  "coverageReporters": ["text", "lcov", "html"],
+  "coverageReporters": ["text", "lcov", "html", "json-summary"],
   "setupFilesAfterEnv": ["<rootDir>/test/setup.js"],
   "testMatch": ["<rootDir>/test/**/*.test.js"],
   "forceExit": true,
