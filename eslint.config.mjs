@@ -10,4 +10,14 @@ export default defineConfig([
     languageOptions: { globals: globals.node },
   },
   { files: ["**/*.js"], languageOptions: { sourceType: "commonjs" } },
+  {
+    files: ["test/**/*.js", "**/*.test.js", "**/*.spec.js"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      sourceType: "commonjs",
+    },
+  },
 ]);
