@@ -71,34 +71,4 @@ describe("JWT Pizza Service", () => {
     });
   });
 
-  // Test basic JavaScript functionality
-  describe("Basic Functionality", () => {
-    it("should perform basic arithmetic", () => {
-      expect(2 + 2).toBe(4);
-      expect(10 - 5).toBe(5);
-      expect(3 * 4).toBe(12);
-      expect(15 / 3).toBe(5);
-    });
-
-    it("should handle string operations", () => {
-      const testString = "JWT Pizza";
-      expect(testString.length).toBe(9);
-      expect(testString.toLowerCase()).toBe("jwt pizza");
-      expect(testString.includes("Pizza")).toBe(true);
-    });
-
-    it("should handle array operations", () => {
-      const testArray = [1, 2, 3, 4, 5];
-      expect(testArray.length).toBe(5);
-      expect(testArray.includes(3)).toBe(true);
-      expect(testArray.indexOf(4)).toBe(3);
-    });
-
-    it("should handle object operations", () => {
-      const testObject = { name: "Pizza", price: 10.99 };
-      expect(testObject.name).toBe("Pizza");
-      expect(testObject.price).toBe(10.99);
-      expect(Object.keys(testObject)).toEqual(["name", "price"]);
-    });
-  });
 });

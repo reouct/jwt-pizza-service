@@ -7,6 +7,23 @@ jest.mock("mysql2/promise", () => ({
   })),
 }));
 
+// Mock the database module to prevent initialization
+jest.mock("../src/database/database.js", () => {
+  const mockDBInstance = {
+    isLoggedIn: jest.fn(),
+    loginUser: jest.fn(),
+    logoutUser: jest.fn(),
+    addUser: jest.fn(),
+    getUser: jest.fn(),
+    initialized: Promise.resolve(),
+  };
+
+  return {
+    DB: mockDBInstance,
+    Role: { Diner: "diner", Admin: "admin", Franchisee: "franchisee" },
+  };
+});
+
 // Mock console.error to reduce noise during tests
 const originalError = console.error;
 beforeAll(() => {
