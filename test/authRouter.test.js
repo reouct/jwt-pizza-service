@@ -20,7 +20,7 @@ const { setAuthUser } = require("../src/routes/authRouter.js");
 // Test setAuthUser middleware function
 describe("setAuthUser Middleware", () => {
   let mockReq, mockRes, mockNext;
-  let mockDB, mockConfig;
+  let mockDB;
 
   beforeEach(() => {
     // Reset mocks before each test
@@ -29,7 +29,6 @@ describe("setAuthUser Middleware", () => {
     // Get the mocked DB instance
     const { DB } = require("../src/database/database.js");
     mockDB = DB;
-    mockConfig = require("../src/config.js");
 
     // Create mock request, response, and next function
     mockReq = {
