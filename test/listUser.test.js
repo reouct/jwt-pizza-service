@@ -11,12 +11,12 @@ jest.mock("../src/database/database", () => {
         users.push({ ...user, password });
         return user;
       }),
-      loginUser: jest.fn(async (id, token) => true),
-      isLoggedIn: jest.fn(async (token) => true),
+      loginUser: jest.fn(async () => true),
+      isLoggedIn: jest.fn(async () => true),
       getUser: jest.fn(async (email, password) =>
         users.find((u) => u.email === email && u.password === password)
       ),
-      updateUser: jest.fn(async (id, name, email, password) => ({
+      updateUser: jest.fn(async (id, name, email) => ({
         id,
         name,
         email,
@@ -44,7 +44,7 @@ test("list users unauthorized", async () => {
 });
 
 test("list users", async () => {
-  const [user, userToken] = await registerUser(request(app));
+  const userToken = await registerUser(request(app));
   const listUsersRes = await request(app)
     .get("/api/user")
     .set("Authorization", "Bearer " + userToken);
@@ -58,9 +58,12 @@ async function registerUser(service) {
     password: "a",
   };
   const registerRes = await service.post("/api/auth").send(testUser);
-  registerRes.body.user.password = testUser.password;
+  // ensure password is available on returned user for other tests if needed
+  if (registerRes.body && registerRes.body.user) {
+    registerRes.body.user.password = testUser.password;
+  }
 
-  return [registerRes.body.user, registerRes.body.token];
+  return registerRes.body.token;
 }
 
 function randomName() {
