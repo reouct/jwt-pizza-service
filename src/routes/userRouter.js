@@ -52,6 +52,15 @@ userRouter.docs = [
       ],
     },
   },
+  {
+    method: "DELETE",
+    path: "/api/user/:userId",
+    requiresAuth: true,
+    description: "Delete a user (self or admin)",
+    example:
+      "curl -X DELETE localhost:3000/api/user/1 -H 'Authorization: Bearer tttttt'",
+    response: { message: "user deleted" },
+  },
 ];
 
 // getUser
@@ -91,6 +100,22 @@ userRouter.get(
     const name = req.query.name || "*";
     const [users, more] = await DB.getUsers(req.user, page, limit, name);
     res.json({ users, more });
+  })
+);
+
+// deleteUsers
+userRouter.delete(
+  "/:userId",
+  authRouter.authenticateToken,
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.userId);
+    const user = req.user;
+    if (user.id !== userId && !user.isRole(Role.Admin)) {
+      return res.status(403).json({ message: "unauthorized" });
+    }
+
+    await DB.deleteUser(userId);
+    res.json({ message: "user deleted" });
   })
 );
 
