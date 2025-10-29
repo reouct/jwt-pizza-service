@@ -16,7 +16,7 @@ function requestTracker(req, res, next) {
   try {
     const endpoint = `[${req.method}] ${req.path}`;
     requests[endpoint] = (requests[endpoint] || 0) + 1;
-  } catch (e) {
+  } catch {
     // best-effort metrics; never block the request flow
   }
   next();
@@ -47,7 +47,7 @@ function recordPurchase(user, order) {
       orderValue += Number(item.price) || 0;
     }
     totalRevenue += orderValue;
-  } catch (e) {
+  } catch {
     // swallow errors; metrics must not affect core flows
   }
 }
@@ -223,7 +223,7 @@ function sendMetricToGrafana(metrics) {
         throw new Error(`HTTP status: ${response.status}`);
       }
     })
-    .catch((error) => {
+    .catch(() => {
       // Log but keep quiet to not spam tests/console
       // console.error('Error pushing metrics:', error);
     });
