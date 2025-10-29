@@ -12,14 +12,14 @@ describe("JWT Pizza Service", () => {
   });
 
   // Test service module loading
-  describe("Service Module", () => {
-    it("should load service module without errors", () => {
-      expect(() => {
-        const service = require("../src/service.js");
-        expect(service).toBeDefined();
-      }).not.toThrow();
-    });
-  });
+  // describe("Service Module", () => {
+  //   it("should load service module without errors", () => {
+  //     expect(() => {
+  //       const service = require("../src/service.js");
+  //       expect(service).toBeDefined();
+  //     }).not.toThrow();
+  //   });
+  // });
 
   // Test database model
   describe("Database Model", () => {

@@ -28,6 +28,12 @@ module.exports = {
     url: "https://pizza-factory.cs329.click",
     apiKey: "yourapikeyhere",
   },
+  metrics: {
+    // Optional: configure to push OTLP metrics to Grafana
+    source: "jwt-pizza-service-dev", // a label identifying this service
+    url: "https://otlp-gateway-prod-us-west-0.grafana.net/otlp/v1/metrics",
+    apiKey: "<grafana_access_token>",
+  },
 };
 ```
 
@@ -52,3 +58,23 @@ Nodemon is assumed to be installed globally so that you can have hot reloading w
 ```sh
 npm -g install nodemon
 ```
+
+## Metrics
+
+If `config.metrics` is provided, the service emits purchase and request metrics to a Grafana OTLP HTTP endpoint every 10 seconds.
+
+Tracked metrics (all cumulative unless noted):
+
+- http_requests_total{endpoint}
+- orders_total
+- revenue_total (double)
+- average_order_value (gauge, double)
+- orders_by_franchise{franchiseId}
+- orders_by_store{storeId}
+- items_sold_total{menuId,description}
+- items_revenue_total{menuId,description} (double)
+
+Implementation details:
+
+- Metrics are best-effort and never block requests.
+- During tests (`NODE_ENV=test`), the periodic push is disabled.
