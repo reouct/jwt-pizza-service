@@ -78,7 +78,9 @@ function recordPurchase(user, order) {
 function recordPizzaCreationFailure() {
   try {
     win_pizza_failures += 1;
-  } catch {}
+  } catch {
+    // best-effort metrics; ignore errors
+  }
 }
 
 function authAttempt(success) {
@@ -86,7 +88,9 @@ function authAttempt(success) {
     win_auth_attempts += 1;
     if (success) win_auth_success += 1;
     else win_auth_failed += 1;
-  } catch {}
+  } catch {
+    // best-effort metrics; ignore errors
+  }
 }
 
 // Periodically send metrics to Grafana OTLP HTTP endpoint (once per minute)

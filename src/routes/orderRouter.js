@@ -136,7 +136,9 @@ orderRouter.post(
       // Record pizza creation failure (best-effort)
       try {
         metrics.recordPizzaCreationFailure();
-      } catch {}
+      } catch {
+        // best-effort metrics; ignore errors
+      }
       res.status(500).send({
         message: "Failed to fulfill order at factory",
         followLinkToEndChaos: j.reportUrl,

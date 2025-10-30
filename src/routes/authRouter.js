@@ -109,7 +109,9 @@ authRouter.put(
       // record failed auth attempt
       try {
         metrics.authAttempt(false);
-      } catch {}
+      } catch {
+        // best-effort metrics; ignore errors
+      }
       throw err;
     }
   })
