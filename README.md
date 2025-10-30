@@ -61,20 +61,14 @@ npm -g install nodemon
 
 ## Metrics
 
-If `config.metrics` is provided, the service emits purchase and request metrics to a Grafana OTLP HTTP endpoint every 10 seconds.
+If `config.metrics` is provided, the service emits metrics to a Grafana OTLP HTTP endpoint every 10 seconds.
 
-Tracked metrics (all cumulative unless noted):
+Currently supported metrics (cumulative):
 
-- http_requests_total{endpoint}
 - orders_total
-- revenue_total (double)
-- average_order_value (gauge, double)
-- orders_by_franchise{franchiseId}
-- orders_by_store{storeId}
-- items_sold_total{menuId,description}
-- items_revenue_total{menuId,description} (double)
+- revenue_total
 
-Implementation details:
+Notes:
 
 - Metrics are best-effort and never block requests.
 - During tests (`NODE_ENV=test`), the periodic push is disabled.
