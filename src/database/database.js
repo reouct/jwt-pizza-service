@@ -4,6 +4,8 @@ const config = require("../config.js");
 const { StatusCodeError } = require("../endpointHelper.js");
 const { Role } = require("../model/model.js");
 const dbModel = require("./dbModel.js");
+// Reuse Loki push for structured DB query logs
+const { pushToLoki } = require("../logger.js");
 class DB {
   constructor() {
     this.initialized = this.initializeDatabase();
@@ -497,8 +499,77 @@ class DB {
   }
 
   async query(connection, sql, params) {
-    const [results] = await connection.execute(sql, params);
-    return results;
+    const start = process.hrtime.bigint();
+    let success = true;
+    let results;
+    let errorObj;
+    try {
+      [results] = await connection.execute(sql, params);
+      return results;
+    } catch (err) {
+      success = false;
+      errorObj = { message: err?.message, code: err?.code };
+      throw err;
+    } finally {
+      // Best-effort logging; never throw
+      try {
+        const end = process.hrtime.bigint();
+        const durationMs = Number(end - start) / 1_000_000;
+        const redacted = this._redact(sql, params);
+        const payload = {
+          type: "db_query",
+          db: "mysql",
+          sql: redacted.sql,
+          params: redacted.params,
+          durationMs: Math.round(durationMs * 100) / 100,
+          rows: Array.isArray(results) ? results.length : undefined,
+          affectedRows: results?.affectedRows,
+          insertId: results?.insertId,
+          success,
+          error: success ? undefined : errorObj,
+          ts: new Date().toISOString(),
+        };
+        const labels = {
+          source: config.logging?.source || "jwt-pizza-service",
+          level: success ? "info" : "error",
+          kind: "sql",
+          success: String(success),
+        };
+        pushToLoki(labels, payload);
+      } catch (err) {
+        /* intentionally ignored: logging errors must not affect query flow */
+        void err;
+      }
+    }
+  }
+
+  _redact(sql, params) {
+    let safeSql = String(sql || "");
+    try {
+      safeSql = safeSql.replace(
+        /(password\s*=\s*')[^']*(')/gi,
+        "$1[redacted]$2"
+      );
+      safeSql = safeSql.replace(/(token\s*=\s*')[^']*(')/gi, "$1[redacted]$2");
+    } catch (err) {
+      /* redaction failed; proceed with original SQL */
+      void err;
+    }
+    const redactVal = (v) => {
+      if (v == null) return v;
+      if (typeof v === "string") {
+        const looksJwt = v.split(".").length === 3;
+        if (looksJwt || v.length > 64) return "[redacted]";
+      }
+      return v;
+    };
+    let safeParams = params;
+    if (Array.isArray(params)) safeParams = params.map(redactVal);
+    else if (params && typeof params === "object") {
+      safeParams = {};
+      for (const k of Object.keys(params)) safeParams[k] = redactVal(params[k]);
+    }
+    return { sql: safeSql, params: safeParams };
   }
 
   async getID(connection, key, value, table) {

@@ -118,30 +118,83 @@ orderRouter.post(
     const order = await DB.addDinerOrder(req.user, orderReq);
     // Record purchase metrics (best-effort)
     metrics.recordPurchase(req.user, order);
-    const r = await fetch(`${config.factory.url}/api/order`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${config.factory.apiKey}`,
-      },
-      body: JSON.stringify({
-        diner: { id: req.user.id, name: req.user.name, email: req.user.email },
+    // Prepare factory request
+    const factoryBody = {
+      diner: { id: req.user.id, name: req.user.name, email: req.user.email },
+      order,
+    };
+    const factoryUrl = `${config.factory.url}/api/order`;
+    const start = process.hrtime.bigint();
+    let responseJson;
+    let responseStatus;
+    let ok;
+    try {
+      const r = await fetch(factoryUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${config.factory.apiKey}`,
+        },
+        body: JSON.stringify(factoryBody),
+      });
+      responseStatus = r.status;
+      ok = r.ok;
+      // Attempt to parse JSON, fallback to text
+      try {
+        responseJson = await r.json();
+      } catch {
+        responseJson = { message: "Non-JSON factory response" };
+      }
+    } catch (err) {
+      ok = false;
+      responseStatus = 0;
+      responseJson = { error: err.message };
+    } finally {
+      // Log factory request/response to Grafana Loki
+      try {
+        const { pushToLoki } = require("../logger.js");
+        const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
+        pushToLoki(
+          {
+            source: config.logging?.source || "jwt-pizza-service",
+            level: ok ? "info" : "error",
+            kind: "factory",
+            status: String(responseStatus),
+          },
+          {
+            type: "factory_request",
+            url: factoryUrl,
+            method: "POST",
+            status: responseStatus,
+            success: ok,
+            durationMs: Math.round(durationMs * 100) / 100,
+            requestBody: factoryBody,
+            responseBody: responseJson,
+            ts: new Date().toISOString(),
+          }
+        );
+      } catch (err) {
+        /* logging failure ignored to keep order flow */
+        void err;
+      }
+    }
+    if (ok) {
+      res.send({
         order,
-      }),
-    });
-    const j = await r.json();
-    if (r.ok) {
-      res.send({ order, followLinkToEndChaos: j.reportUrl, jwt: j.jwt });
+        followLinkToEndChaos: responseJson.reportUrl,
+        jwt: responseJson.jwt,
+      });
     } else {
       // Record pizza creation failure (best-effort)
       try {
         metrics.recordPizzaCreationFailure();
-      } catch {
-        // best-effort metrics; ignore errors
+      } catch (err) {
+        /* metrics failure ignored */
+        void err;
       }
       res.status(500).send({
         message: "Failed to fulfill order at factory",
-        followLinkToEndChaos: j.reportUrl,
+        followLinkToEndChaos: responseJson.reportUrl,
       });
     }
   })
