@@ -22,48 +22,88 @@ function nanoNow() {
   return (BigInt(Date.now()) * 1_000_000n).toString();
 }
 
-// Redact common sensitive fields
+// Comprehensive redaction & sanitization of potentially sensitive data.
+// Applies to payload bodies, DB params, factory calls, and exceptions.
 function redact(obj, maxLength = 5_000) {
   try {
     if (obj == null) return obj;
-    const clone = JSON.parse(JSON.stringify(obj));
-    const sensitiveKeys = new Set([
-      "password",
-      "passwd",
-      "token",
-      "accessToken",
-      "refreshToken",
-      "secret",
-    ]);
-    const visit = (node) => {
-      if (!node || typeof node !== "object") return;
-      for (const k of Object.keys(node)) {
-        const v = node[k];
-        if (sensitiveKeys.has(k)) {
-          node[k] = "[redacted]";
-        } else if (typeof v === "object") {
-          visit(v);
-        }
-      }
-    };
-    visit(clone);
-    let str = JSON.stringify(clone);
-    if (str.length > maxLength) {
-      str =
-        str.slice(0, maxLength) +
-        `...[truncated ${str.length - maxLength} chars]`;
+    // Primitive quick path
+    if (typeof obj !== "object") return sanitizeScalar(obj, maxLength);
+    const clone = Array.isArray(obj) ? [] : {};
+    for (const [k, v] of Object.entries(obj)) {
+      const safeKey = k;
+      clone[safeKey] = sanitizeValue(safeKey, v, maxLength);
     }
-    return JSON.parse(str);
+    return clone;
   } catch {
-    // If serialization fails, fallback to string slice of original
-    try {
-      let s = typeof obj === "string" ? obj : JSON.stringify(obj);
-      if (s.length > maxLength) s = s.slice(0, maxLength) + "...[truncated]";
-      return s;
-    } catch {
-      return undefined;
-    }
+    return undefined;
   }
+}
+
+const SENSITIVE_KEY_REGEX =
+  /(pass(word)?|token|refresh|access|secret|authorization|apiKey|jwt|session|bearer)/i;
+const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const JWT_REGEX = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/;
+
+function sanitizeScalar(value, maxLength) {
+  if (value == null) return value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  let s = String(value);
+  // Mask Authorization header forms
+  if (/^Bearer\s+/i.test(s)) s = "Bearer [redacted]";
+  if (/^Basic\s+/i.test(s)) s = "Basic [redacted]";
+  // Emails
+  s = s.replace(EMAIL_REGEX, (m) => maskEmail(m));
+  // JWT
+  if (JWT_REGEX.test(s)) s = "[jwt]";
+  // Long base64/secret-like strings
+  if (s.length > 128 && /[A-Za-z0-9+/=]{40,}/.test(s)) s = "[redacted]";
+  if (s.length > maxLength) {
+    s = s.slice(0, maxLength) + `...[truncated ${s.length - maxLength} chars]`;
+  }
+  return s;
+}
+
+function sanitizeValue(key, value, maxLength) {
+  if (value == null) return value;
+  if (SENSITIVE_KEY_REGEX.test(key)) return "[redacted]";
+  if (typeof value === "object") return redact(value, maxLength);
+  return sanitizeScalar(value, maxLength);
+}
+
+function maskEmail(email) {
+  try {
+    const [user, domain] = email.split("@");
+    const mUser =
+      user.length <= 2
+        ? "*".repeat(user.length)
+        : user[0] + "***" + user[user.length - 1];
+    const domainParts = domain.split(".");
+    const root = domainParts[0];
+    const maskedRoot =
+      root.length <= 2
+        ? "*".repeat(root.length)
+        : root[0] + "***" + root[root.length - 1];
+    domainParts[0] = maskedRoot;
+    return `${mUser}@${domainParts.join(".")}`;
+  } catch {
+    return "[email]";
+  }
+}
+
+// Sanitise labels & payload before sending to Loki.
+function sanitizeForLogging(labels, payload) {
+  const safeLabels = {};
+  for (const [k, v] of Object.entries(labels || {})) {
+    safeLabels[k] = sanitizeScalar(v, 256);
+  }
+  let safePayload;
+  if (typeof payload === "string") {
+    safePayload = sanitizeScalar(payload, 5_000);
+  } else {
+    safePayload = redact(payload, 5_000);
+  }
+  return { safeLabels, safePayload };
 }
 
 // Build Loki request body
@@ -84,18 +124,20 @@ function buildLokiBody(labels, logLine) {
 }
 
 async function pushToLoki(logLabels, logPayload) {
+  // Always sanitise first
+  const { safeLabels, safePayload } = sanitizeForLogging(logLabels, logPayload);
   const url = config.logging?.url;
   const apiKey = config.logging?.apiKey;
   const userId = config.logging?.userId;
 
   if (!url || !apiKey || process.env.NODE_ENV === "test") {
     // In tests or when not configured, just emit to console for local visibility
-    console.log(JSON.stringify({ labels: logLabels, log: logPayload }));
+    console.log(JSON.stringify({ labels: safeLabels, log: safePayload }));
     return;
   }
 
   const auth = userId ? toBasicAuth(userId, apiKey) : `Bearer ${apiKey}`;
-  const body = buildLokiBody(logLabels, logPayload);
+  const body = buildLokiBody(safeLabels, safePayload);
 
   try {
     const res = await fetch(url, {

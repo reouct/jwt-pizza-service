@@ -55,12 +55,82 @@ app.use("*", (req, res) => {
   });
 });
 
-// Default error handler for all exceptions and errors.
+// Default error handler for all exceptions and errors (also pushes to Grafana Loki)
 app.use((err, req, res, next) => {
-  res
-    .status(err.statusCode ?? 500)
-    .json({ message: err.message, stack: err.stack });
+  const status = err.statusCode ?? 500;
+  // respond first
+  res.status(status).json({ message: err.message, stack: err.stack });
+  try {
+    const { pushToLoki } = require("./logger.js");
+    pushToLoki(
+      {
+        source: config.logging?.source || "jwt-pizza-service",
+        level: "error",
+        kind: "exception",
+        status: String(status),
+      },
+      {
+        type: "unhandled_error",
+        message: err.message,
+        stack: err.stack,
+        status,
+        path: req.originalUrl || req.url || req.path,
+        method: req.method,
+        hasAuthHeader: Boolean(req.headers?.authorization),
+        ts: new Date().toISOString(),
+      }
+    );
+  } catch (logErr) {
+    // swallow logging failures
+    void logErr;
+  }
   next();
 });
+
+// Process-level unhandled exception/rejection logging (avoid duplicate exits in test)
+if (process.env.NODE_ENV !== "test") {
+  const { pushToLoki } = require("./logger.js");
+  process.on("uncaughtException", (error) => {
+    try {
+      pushToLoki(
+        {
+          source: config.logging?.source || "jwt-pizza-service",
+          level: "error",
+          kind: "process",
+          type: "uncaughtException",
+        },
+        {
+          type: "uncaughtException",
+          message: error.message,
+          stack: error.stack,
+          ts: new Date().toISOString(),
+        }
+      );
+    } catch (e) {
+      void e; // ignore logging errors
+    }
+    // Optionally exit: process.exit(1); (omitted to keep service alive for now)
+  });
+  process.on("unhandledRejection", (reason) => {
+    try {
+      pushToLoki(
+        {
+          source: config.logging?.source || "jwt-pizza-service",
+          level: "error",
+          kind: "process",
+          type: "unhandledRejection",
+        },
+        {
+          type: "unhandledRejection",
+          reason: reason && reason.message ? reason.message : String(reason),
+          stack: reason && reason.stack ? reason.stack : undefined,
+          ts: new Date().toISOString(),
+        }
+      );
+    } catch (e) {
+      void e; // ignore logging errors
+    }
+  });
+}
 
 module.exports = app;
