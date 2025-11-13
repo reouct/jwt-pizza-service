@@ -20,4 +20,14 @@ export default defineConfig([
       sourceType: "commonjs",
     },
   },
+  // Allow ESM in load test scripts
+  {
+    files: ["loadTests/**/*.js", "loadTests/**/*.mjs"],
+    languageOptions: {
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 ]);
