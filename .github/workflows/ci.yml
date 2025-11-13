@@ -138,12 +138,56 @@ jobs:
         run: |
           set -e
           IMAGE_URI=${ECR_REGISTRY}/${ECR_REPOSITORY}
-          # Build for ECS default arch (amd64). If your tasks use Graviton (arm64), change accordingly
-          docker buildx build --platform linux/amd64 \
+          # Build multi-arch so both amd64 and arm64 tasks can pull
+          docker buildx build --platform linux/amd64,linux/arm64 \
             -t $IMAGE_URI:latest \
             -t $IMAGE_URI:$version \
             --push .
           echo "image=$IMAGE_URI:$version" >> $GITHUB_OUTPUT
+
+      - name: Update ECS task definition to new image tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: "jwt-pizza-service"
+          AWS_REGION: us-east-1
+        run: |
+          set -e
+          IMAGE_URI=${ECR_REGISTRY}/${ECR_REPOSITORY}
+          aws ecs describe-task-definition \
+            --task-definition jwt-pizza-service \
+            --region ${AWS_REGION} > td.json
+
+          # Prepare registration input: update image tag, remove read-only fields
+          jq --arg image "$IMAGE_URI:$version" '
+            .taskDefinition
+            | del(.taskDefinitionArn,
+                   .revision,
+                   .status,
+                   .requiresAttributes,
+                   .compatibilities,
+                   .registeredAt,
+                   .registeredBy,
+                   .deregisteredAt,
+                   .deregisteredBy)
+            | .containerDefinitions = (
+                .containerDefinitions
+                | map(if .name == "jwt-pizza-service" then .image = $image else . end)
+              )
+          ' td.json > taskdef-input.json
+
+          aws ecs register-task-definition \
+            --cli-input-json file://taskdef-input.json \
+            --region ${AWS_REGION} > new-td.json
+
+          NEW_TD_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' new-td.json)
+          echo "New task definition: ${NEW_TD_ARN}"
+
+          aws ecs update-service \
+            --cluster jwt-pizza-service \
+            --service jwt-pizza-service \
+            --task-definition "${NEW_TD_ARN}" \
+            --force-new-deployment \
+            --region ${AWS_REGION}
 
       - name: Deploy new container
         run: |
