@@ -28,9 +28,9 @@ export const options = {
 
 export function scenario_1() {
   let response;
-
   const vars = {};
 
+  // 1) LOGIN
   response = http.put(
     "https://pizza-service.reouct.click/api/auth",
     '{"email":"d@jwt.com","password":"diner"}',
@@ -53,8 +53,18 @@ export function scenario_1() {
     }
   );
 
+  // CHECK: login succeeded
+  const loginOk = check(response, {
+    "login status is 200": (r) => r.status === 200,
+  });
+  if (!loginOk) {
+    fail(`Login failed, status was ${response.status}`);
+  }
+
+  // get auth token from login response
   vars["token"] = jsonpath.query(response.json(), "$.token")[0];
 
+  // preflight OPTIONS for login
   response = http.options("https://pizza-service.reouct.click/api/auth", null, {
     headers: {
       accept: "*/*",
@@ -71,6 +81,7 @@ export function scenario_1() {
   });
   sleep(3.9);
 
+  // 2) MENU
   response = http.get("https://pizza-service.reouct.click/api/order/menu", {
     headers: {
       accept: "*/*",
@@ -109,6 +120,7 @@ export function scenario_1() {
     }
   );
 
+  // 3) FRANCHISE LIST
   response = http.get(
     "https://pizza-service.reouct.click/api/franchise?page=0&limit=20&name=*",
     {
@@ -151,6 +163,7 @@ export function scenario_1() {
   );
   sleep(3.3);
 
+  // 4) USER INFO
   response = http.get("https://pizza-service.reouct.click/api/user/me", {
     headers: {
       accept: "*/*",
@@ -190,6 +203,7 @@ export function scenario_1() {
   );
   sleep(0.8);
 
+  // 5) PLACE ORDER (PURCHASE)
   response = http.post(
     "https://pizza-service.reouct.click/api/order",
     '{"items":[{"menuId":1,"description":"Veggie","price":0.0038},{"menuId":2,"description":"Pepperoni","price":0.0042}],"storeId":"1","franchiseId":1}',
@@ -213,6 +227,22 @@ export function scenario_1() {
     }
   );
 
+  // CHECK: purchase succeeded (adjust expected code if your API uses 201 or something else)
+  const purchaseOk = check(response, {
+    "order status is 200 or 201": (r) => r.status === 200 || r.status === 201,
+  });
+  if (!purchaseOk) {
+    fail(`Order creation failed, status was ${response.status}`);
+  }
+
+  // Get JWT for verification from the purchase response (no hard-coded JWT)
+  // Adjust the JSONPath if your API uses a different field than "jwt"
+  const orderJwtArr = jsonpath.query(response.json(), "$.jwt");
+  if (!orderJwtArr || orderJwtArr.length === 0) {
+    fail("No JWT found in order response");
+  }
+  vars["orderJwt"] = orderJwtArr[0];
+
   response = http.options(
     "https://pizza-service.reouct.click/api/order",
     null,
@@ -233,9 +263,12 @@ export function scenario_1() {
   );
   sleep(1.1);
 
+  // 6) VERIFY ORDER using JWT from purchase response (no hard-coded JWT)
+  const verifyBody = JSON.stringify({ jwt: vars["orderJwt"] });
+
   response = http.post(
     "https://pizza-factory.cs329.click/api/order/verify",
-    '{"jwt":"eyJpYXQiOjE3NjMwNjcwNjUsImV4cCI6MTc2MzE1MzQ2NSwiaXNzIjoiY3MzMjkuY2xpY2siLCJhbGciOiJSUzI1NiIsImtpZCI6Ik9TcF94VzhlM3kwNk1KS3ZIeW9sRFZMaXZXX2hnTWxhcFZSUVFQVndiY0UifQ.eyJ2ZW5kb3IiOnsiaWQiOiJsaXUyMDAzIiwibmFtZSI6IkJvd2VuIExpdSJ9LCJkaW5lciI6eyJpZCI6MiwibmFtZSI6InBpenphIGRpbmVyIiwiZW1haWwiOiJkQGp3dC5jb20ifSwib3JkZXIiOnsiaXRlbXMiOlt7Im1lbnVJZCI6MSwiZGVzY3JpcHRpb24iOiJWZWdnaWUiLCJwcmljZSI6MC4wMDM4fSx7Im1lbnVJZCI6MiwiZGVzY3JpcHRpb24iOiJQZXBwZXJvbmkiLCJwcmljZSI6MC4wMDQyfV0sInN0b3JlSWQiOiIxIiwiZnJhbmNoaXNlSWQiOjEsImlkIjo0NX19.OMrIpLrzZ_w_AdfqITw8ejLugXakGZYDIizxfGCeFWNxi6G_zins6IS6i2Y0oRPPUOQZnlyVHYMD2z0pJU5la_cSRlNsx2aKPbxgO0OuB06VXhMxMmBjduxPqDeg5L0adahIEXC0BFt_IG70XbB9TE5Rw8upnq9T4Re1dXB31yim46S_u32vbwQBbgjo3agCT2XXdi_fIkiHuEqWbgekr5WlQw9M1lStwcvEE0EfGtnHI5q4t7dlNLjsoSfb77u8mQNcEZyRBTAV0zOV2TcV_RBlnymAOHMRwZWcg68Yg3xX3iMlYNMMHl45FNspYmM18VFFy8ZiDVJRYmuJW8HXe7Wp2zAel4kuPq-payRlO_CUF3Me01tjMTDoBW01bi_umN1mgtpuglZQhuxt8D8Ua93lxXiqhQdhv2CN_u5OQOdli0AuKQZpWgAnc7lEs9YKNVqQoJUW9ac5AJY0kz4bfdZWCk2iwOtyS_RGlifYeFj7MQNftyaTBIgIKAWUbiEF6SKdsXb6PyKQ63DtUiZUeIUO7gjBIRZxhVle-UoFeNKpdy1jXqESxruhGkUFIEsLZgGTh37SL7r2-fTwYU7H2RIus1jS84QgYfR4MHnGNVsALICOWN6X-etKVkhRCcXAPOsmrWyuyeFmPFg6eg-e-Wdv8HuDWG0AlpzmJyoyNrk"}',
+    verifyBody,
     {
       headers: {
         accept: "*/*",
@@ -256,6 +289,11 @@ export function scenario_1() {
       },
     }
   );
+
+  // Optional: CHECK verify status as well
+  check(response, {
+    "verify status is 200": (r) => r.status === 200,
+  });
 
   response = http.options(
     "https://pizza-factory.cs329.click/api/order/verify",
